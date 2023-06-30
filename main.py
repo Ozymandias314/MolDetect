@@ -270,7 +270,7 @@ class ReactionExtractorPix2Seq(ReactionExtractor):
                 bboxes = postprocess_bboxes(bboxes)
                 batch_preds[format].append(bboxes)
             if format == 'coref':
-                corefs = self.tokenizer[format].sequence_to_data(seqs.tolist(), scores.tolist(), scale = refs['scale'][i])['bboxes']
+                corefs = self.tokenizer[format].sequence_to_data(seqs.tolist(), scores.tolist(), scale = refs['scale'][i])
                 batch_preds[format].append(corefs)
             batch_preds['file_name'].append(refs['file_name'][i])
         return indices, batch_preds
@@ -365,7 +365,7 @@ def main():
         accumulate_grad_batches=args.gradient_accumulation_steps,
         check_val_every_n_epoch=args.eval_per_epoch,
         log_every_n_steps=10,
-        deterministic='warn')
+        deterministic=True)
 
     if args.do_train:
         trainer.num_training_steps = math.ceil(
