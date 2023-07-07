@@ -7,6 +7,7 @@ import numpy as np
 
 import torch
 import torch.distributed as dist
+from torch.profiler import profile, record_function, ProfilerActivity
 import pytorch_lightning as pl
 from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import LearningRateMonitor
@@ -21,6 +22,8 @@ from rxnscribe.dataset import ReactionDataset, get_collate_fn
 from rxnscribe.data import postprocess_reactions, postprocess_bboxes
 from rxnscribe.evaluate import CocoEvaluator, ReactionEvaluator, CorefEvaluator
 import rxnscribe.utils as utils
+
+import time
 
 
 def get_args(notebook=False):
@@ -67,6 +70,9 @@ def get_args(notebook=False):
     parser.add_argument('--position_embedding', default='sine', type=str, choices=('sine', 'learned'),
                         help="Type of positional embedding to use on top of the image features")
     # * Transformer
+
+    parser.add_argument('--use_linear_head', action = 'store_true')
+
     parser.add_argument('--enc_layers', default=6, type=int, help="Number of encoding layers in the transformer")
     parser.add_argument('--dec_layers', default=6, type=int, help="Number of decoding layers in the transformer")
     parser.add_argument('--dim_feedforward', default=1024, type=int,
@@ -158,6 +164,7 @@ class ReactionExtractor(LightningModule):
         return indices, batch_preds
 
     def validation_epoch_end(self, outputs, phase='val'):
+        return
         if self.trainer.num_devices > 1:
             gathered_outputs = [None for i in range(self.trainer.num_devices)]
             dist.all_gather_object(gathered_outputs, outputs)
@@ -196,6 +203,7 @@ class ReactionExtractor(LightningModule):
                     precision, recall, f1 = results
                     self.print(f'Epoch: {epoch:>3}  Precision: {precision:.4f}  Recall: {recall:.4f}  F1: {f1:.4f}')
                     scores = [f1]
+                    '''
                     self.print("now evaluating csr_prediction no proc")
                     with open('./output/csr_predictions_no_proc_bbox.json') as f:
                         pred1 = json.load(f)
@@ -203,6 +211,7 @@ class ReactionExtractor(LightningModule):
                     results = evaluator.evaluate_summarize(self.eval_dataset.data, pred1['coref'])
                     precision, recall, f1 = results
                     self.print(f'Epoch: {epoch:>3}  Precision: {precision:.4f}  Recall: {recall:.4f}  F1: {f1:.4f}')
+                    '''
                 else:
                     raise NotImplementedError
                 with open(os.path.join(self.trainer.default_root_dir, f'eval_{name}.json'), 'w') as f:
@@ -248,9 +257,14 @@ class ReactionExtractorPix2Seq(ReactionExtractor):
     def training_step(self, batch, batch_idx):
         indices, images, refs = batch
         format = self.format
+
+        if self.args.use_linear_head:
+            loss, _ = self.model(images, refs[format])
+            return loss
         results = {format: (self.model(images, refs[format]), refs[format+'_out'][0][:, 1:])}
         losses = self.criterion(results, refs)
         loss = sum(losses.values())
+        print(loss)
         self.log('train/loss', loss)
         self.log('lr', self.lr_schedulers().get_lr()[0], prog_bar=True, logger=False)
         return loss
@@ -260,6 +274,8 @@ class ReactionExtractorPix2Seq(ReactionExtractor):
         format = self.format
         batch_preds = {format: [], 'file_name': []}
         pred_seqs, pred_scores = self.model(images, max_len=self.tokenizer[format].max_len)
+
+        return pred_seqs, pred_scores
         for i, (seqs, scores) in enumerate(zip(pred_seqs, pred_scores)):
             if format == 'reaction':
                 reactions = self.tokenizer[format].sequence_to_data(seqs.tolist(), scores.tolist(), scale=refs['scale'][i])
@@ -270,7 +286,7 @@ class ReactionExtractorPix2Seq(ReactionExtractor):
                 bboxes = postprocess_bboxes(bboxes)
                 batch_preds[format].append(bboxes)
             if format == 'coref':
-                corefs = self.tokenizer[format].sequence_to_data(seqs.tolist(), scores.tolist(), scale = refs['scale'][i])
+                corefs = self.tokenizer[format].sequence_to_data(seqs.tolist(), scores.tolist(), scale = refs['scale'][i])['bboxes']
                 batch_preds[format].append(corefs)
             batch_preds['file_name'].append(refs['file_name'][i])
         return indices, batch_preds
@@ -356,7 +372,8 @@ def main():
     trainer = pl.Trainer(
         strategy=DDPStrategy(find_unused_parameters=False),
         accelerator='gpu',
-        devices=4,
+        devices=1,
+        precision=16,
         logger=logger,
         default_root_dir=args.save_path,
         callbacks=[checkpoint, lr_monitor],
@@ -365,7 +382,7 @@ def main():
         accumulate_grad_batches=args.gradient_accumulation_steps,
         check_val_every_n_epoch=args.eval_per_epoch,
         log_every_n_steps=10,
-        deterministic=True)
+        deterministic='warn')
 
     if args.do_train:
         trainer.num_training_steps = math.ceil(
@@ -377,7 +394,10 @@ def main():
 
     if args.do_valid:
         model.eval_dataset = dm.val_dataset
+        #with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+        #    with record_function("model_inference"):
         trainer.validate(model, datamodule=dm)
+        #print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
 
     if args.do_test:
         model.eval_dataset = dm.test_dataset

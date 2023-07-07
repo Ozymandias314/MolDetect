@@ -9,11 +9,13 @@ from torch import nn
 from .misc import nested_tensor_from_tensor_list
 from .backbone import build_backbone
 from .transformer import build_transformer
+from torch.profiler import profile, record_function, ProfilerActivity
 
+import time
 
 class Pix2Seq(nn.Module):
     """ This is the Pix2Seq module that performs object detection """
-    def __init__(self, backbone, transformer):
+    def __init__(self, backbone, transformer, args):
         """ Initializes the model.
         Parameters:
             backbone: torch module of the backbone to be used. See backbone.py
@@ -23,11 +25,16 @@ class Pix2Seq(nn.Module):
         """
         super().__init__()
         self.transformer = transformer
-        hidden_dim = transformer.d_model
+        hidden_dim = 256 #transformer.d_model
         self.input_proj = nn.Sequential(
             nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=(1, 1)),
             nn.GroupNorm(32, hidden_dim))
         self.backbone = backbone
+        if args.use_linear_head:
+            self.use_linear_head = True
+            self.loss_fn = nn.CrossEntropyLoss()
+        else:
+            self.use_linear_head = False
 
     def forward(self, image_tensor, targets=None, max_len=500):
         """ 
@@ -41,13 +48,35 @@ class Pix2Seq(nn.Module):
         """
         if isinstance(image_tensor, (list, torch.Tensor)):
             image_tensor = nested_tensor_from_tensor_list(image_tensor)
+        
         features, pos = self.backbone(image_tensor)
+
 
         src, mask = features[-1].decompose()
         assert mask is not None
         mask = torch.zeros_like(mask).bool()
 
         src = self.input_proj(src)
+
+        if self.use_linear_head:
+            #1 x 256 x 42 x 42 
+            src=src.view(1, 256, -1)
+            src = src.mean(dim = 2)
+            if targets is not None:
+                input_seq, input_len = targets
+ 
+                #src=src.view(1, -1)
+                output_logits = self.transformer(src)
+                loss = self.loss_fn(output_logits, input_seq.view(-1))
+                print(loss)
+                #print(self.backbone[0].body)
+                #print(self.transformer[0].weight)
+                return loss, loss
+            else:
+                #src=src.view(1, -1)
+                output_logits = self.transformer(src)
+                return output_logits.argmax(dim = 1), output_logits.argmax(dim = 1) 
+
         if targets is not None:
             input_seq, input_len = targets
             output_logits = self.transformer(src, input_seq[:, 1:], mask, pos[-1])
@@ -70,7 +99,7 @@ def build_pix2seq_model(args, tokenizer):
     backbone = build_backbone(args)
     transformer = build_transformer(args, tokenizer)
 
-    model = Pix2Seq(backbone, transformer)
+    model = Pix2Seq(backbone, transformer, args)
 
     if args.pix2seq_ckpt is not None:
         checkpoint = torch.load(args.pix2seq_ckpt, map_location='cpu')

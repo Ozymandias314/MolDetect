@@ -346,6 +346,10 @@ def _get_clones(module, N):
 
 
 def build_transformer(args, tokenizer):
+    if args.use_linear_head:
+        return nn.Sequential(
+            nn.Linear(256, 2094)
+        )
     num_vocal = len(tokenizer)
     return Transformer(
         d_model=args.hidden_dim,

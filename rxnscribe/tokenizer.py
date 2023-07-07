@@ -590,8 +590,10 @@ class CorefTokenizer(ReactionTokenizer):
                 sequence += self.bbox_to_sequence(bbox, category)
                 sequence_out += [self.PAD_ID] * 4 + [self.NOISE_ID]
             '''
-        sequence.append(self.EOS_ID)
-        sequence_out.append(self.EOS_ID)
+        sequence = sequence[1:2]
+        sequence_out = sequence_out[1:2]
+        #sequence.append(self.EOS_ID)
+        #sequence_out.append(self.EOS_ID)
         return sequence, sequence_out
     
     def sequence_to_data(self, sequence, scores=None, scale=None):
