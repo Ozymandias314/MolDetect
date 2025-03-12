@@ -81,7 +81,7 @@ class RxnScribe:
         return model
 
     def get_molscribe(self):
-        ckpt_path = hf_hub_download("yujieq/MolScribe", "swin_base_char_aux_1m.pth")
+        ckpt_path = hf_hub_download("yujieq/MolScribe", "swin_base_char_aux_1m680k.pth")
         molscribe = MolScribe(ckpt_path, device=self.device)
         return molscribe
 
@@ -232,7 +232,7 @@ class MolDetect:
         return model
 
     def get_molscribe(self): 
-        ckpt_path = hf_hub_download("yujieq/MolScribe", "swin_base_char_aux_1m.pth")
+        ckpt_path = hf_hub_download("yujieq/MolScribe", "swin_base_char_aux_1m680k.pth")
         molscribe = MolScribe(ckpt_path, device=self.device)
         return molscribe
 
