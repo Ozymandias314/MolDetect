@@ -1,9 +1,8 @@
-import os
 import argparse
+from functools import lru_cache
 from typing import List
 import PIL
 import torch
-from torch.profiler import profile, record_function, ProfilerActivity
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -20,11 +19,13 @@ import easyocr
 
 class RxnScribe:
 
-    def __init__(self, model_path, device=None):
+    def __init__(self, model_path, device=None, molscribe_instance=None, molscribe_ckpt_path=None):
         """
         RxnScribe Interface
         :param model_path: path of the model checkpoint.
         :param device: torch device, defaults to be CPU.
+        :param molscribe_instance: MolScribe instance, defaults to None
+        :param molscribe_ckpt_path: path to MolScribe checkpoint, defaults to None
         """
         args = self._get_args()
         args.format = 'reaction'
@@ -35,8 +36,26 @@ class RxnScribe:
         self.tokenizer = get_tokenizer(args)
         self.model = self.get_model(args, self.tokenizer, self.device, states['state_dict'])
         self.transform = make_transforms('test', augment=False, debug=False)
-        self.molscribe = self.get_molscribe()
         self.ocr_model = self.get_ocr_model()
+        self.molscribe_ckpt_path = molscribe_ckpt_path
+        self._molscribe = molscribe_instance
+
+    @property
+    def molscribe(self):
+        if self._molscribe is None:
+            self.init_molscribe()
+        return self._molscribe
+
+    @lru_cache(maxsize=None)
+    def init_molscribe(self):
+        """
+        Set model to custom checkpoint
+        Parameters:
+            ckpt_path: path to checkpoint to use, if None then will use default
+        """
+        if self.molscribe_ckpt_path is None:
+            self.molscribe_ckpt_path = hf_hub_download("yujieq/MolScribe", "swin_base_char_aux_1m680k.pth")
+        self._molscribe = MolScribe(self.molscribe_ckpt_path, device=self.device)
 
     def _get_args(self):
         parser = argparse.ArgumentParser()
@@ -79,11 +98,6 @@ class RxnScribe:
         model.to(device)
         model.eval()
         return model
-
-    def get_molscribe(self):
-        ckpt_path = hf_hub_download("yujieq/MolScribe", "swin_base_char_aux_1m680k.pth")
-        molscribe = MolScribe(ckpt_path, device=self.device)
-        return molscribe
 
     def get_ocr_model(self):
         reader = easyocr.Reader(['en'], gpu=(self.device.type == 'cuda'))
@@ -169,11 +183,14 @@ class RxnScribe:
 
 class MolDetect:
 
-    def __init__(self, model_path, device = None, coref = False):
+    def __init__(self, model_path, device = None, coref = False, molscribe_instance=None, molscribe_ckpt_path=None):
         """
         MolDetect Interface
         :param model_path: path of the model checkpoint. 
         :param device: torch device, defaults to be CPU.
+        :param coref: whether to use COREF model, defaults to False
+        :param molscribe_instance: MolScribe instance, defaults to None
+        :param molscribe_ckpt_path: path of MolScribe checkpoint, defaults to None
         """
         args = self._get_args()
         if not coref: args.format = 'bbox'
@@ -186,7 +203,25 @@ class MolDetect:
         self.model = self.get_model(args, self.tokenizer, self.device, states['state_dict'])
         self.transform = make_transforms('test', augment=False, debug=False)
         self.ocr_model = self.get_ocr_model()
-        self.molscribe = self.get_molscribe()
+        self.molscribe_ckpt_path = molscribe_ckpt_path
+        self._molscribe = molscribe_instance
+
+    @property
+    def molscribe(self):
+        if self._molscribe is None:
+            self.init_molscribe()
+        return self._molscribe
+
+    @lru_cache(maxsize=None)
+    def init_molscribe(self):
+        """
+        Set model to custom checkpoint
+        Parameters:
+            ckpt_path: path to checkpoint to use, if None then will use default
+        """
+        if self.molscribe_ckpt_path is None:
+            self.molscribe_ckpt_path = hf_hub_download("yujieq/MolScribe", "swin_base_char_aux_1m680k.pth")
+        self._molscribe = MolScribe(self.molscribe_ckpt_path, device=self.device)
 
     def _get_args(self):
         parser = argparse.ArgumentParser()
@@ -230,11 +265,6 @@ class MolDetect:
         model.to(device)
         model.eval()
         return model
-
-    def get_molscribe(self): 
-        ckpt_path = hf_hub_download("yujieq/MolScribe", "swin_base_char_aux_1m680k.pth")
-        molscribe = MolScribe(ckpt_path, device=self.device)
-        return molscribe
 
     def get_ocr_model(self):
         reader = easyocr.Reader(['en'], gpu = (self.device.type == 'cuda'))
