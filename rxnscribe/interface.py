@@ -100,7 +100,7 @@ class RxnScribe:
         return model
 
     def get_ocr_model(self):
-        reader = easyocr.Reader(['en'], gpu=(self.device.type == 'cuda'))
+        reader = easyocr.Reader(['en'], gpu=True)
         return reader
 
     def predict_images(self, input_images: List, batch_size=16, molscribe=False, ocr=False):
@@ -267,7 +267,7 @@ class MolDetect:
         return model
 
     def get_ocr_model(self):
-        reader = easyocr.Reader(['en'], gpu = (self.device.type == 'cuda'))
+        reader = easyocr.Reader(['en'], gpu =True)
         return reader
     
     def predict_images(self, input_images: List, batch_size = 16, molscribe = False, coref = False, ocr = False):
