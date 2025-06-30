@@ -99,10 +99,10 @@ pip install -r requirements.txt
 ```
 
 ## Data
-Download the reaction diagrams from this [link](https://huggingface.co/yujieq/RxnScribe/blob/main/images.zip), 
+Download the reaction diagrams from this [link](https://huggingface.co/datasets/Ozymandias314/MolCorefData/blob/main/images.zip), 
 and save them to `data/detect/images/`.
 
-The ground truth files can be found at the same [link](https://huggingface.co/yujieq/RxnScribe/blob/main/images.zip), and they should be saved to the paths [`data/detect/splits/annotations/`](data/detect/splits/annotations) and [`data/coref/splits/annotations/`](data/coref/splits/annotations). 
+The ground truth files can be found at the same [link](https://huggingface.co/datasets/Ozymandias314/MolCorefData/tree/main), and they should be saved to the paths [`data/detect/splits/annotations/`](data/detect/splits/annotations) and [`data/coref/splits/annotations/`](data/coref/splits/annotations). 
 
 We use a 70-10-20 split in our experiments.
 
