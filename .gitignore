@@ -4,3 +4,5 @@ scripts/*.sh
 output/**/*.json
 *.png
 .ipynb_checkpoints
+**/.DS_Store
+*.egg-info
